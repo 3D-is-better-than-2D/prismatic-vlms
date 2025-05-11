@@ -23,6 +23,7 @@ from transformers.modeling_outputs import CausalLMOutputWithPast
 from prismatic.models.backbones.llm import LLMBackbone
 from prismatic.models.backbones.llm.prompting import PromptBuilder
 from prismatic.models.backbones.vision import VisionBackbone
+from prismatic.models.backbones.vision.vggt import VGGTBackbone
 from prismatic.models.vlms.base_vlm import VLM
 from prismatic.overwatch import initialize_overwatch
 from prismatic.util.nn_utils import FusedMLPProjector, LinearProjector, MLPProjector
@@ -41,6 +42,7 @@ class PrismaticVLM(VLM):
         model_id: str,
         vision_backbone: VisionBackbone,
         llm_backbone: LLMBackbone,
+        vggt_backbone: Optional[VGGTBackbone] = None,
         enable_mixed_precision_training: bool = True,
         arch_specifier: str = "gelu-mlp",
     ) -> None:
@@ -66,12 +68,31 @@ class PrismaticVLM(VLM):
         else:
             raise ValueError(f"PrismaticVLM with `{arch_specifier = }` is not supported!")
 
+        # Initialize VGGT backbone and projector if provided
+        self.vggt_backbone = VGGTBackbone()
+        self.vggt_backbone.to(self.device)
+        # if vggt_backbone is not None:
+        #     if arch_specifier == "linear":
+        #         self.vggt_projector = LinearProjector(vggt_backbone.embed_dim, llm_backbone.embed_dim)
+        #     elif arch_specifier.endswith("fused-gelu-mlp"):
+        #         self.vggt_projector = FusedMLPProjector(vggt_backbone.embed_dim, llm_backbone.embed_dim)
+        #     elif arch_specifier.endswith("gelu-mlp"):
+        #         self.vggt_projector = MLPProjector(vggt_backbone.embed_dim, llm_backbone.embed_dim)
+        #     else:
+        #         raise ValueError(f"VGGT projector with `{arch_specifier = }` is not supported!")
+
+        self.vggt_projector = MLPProjector(self.vggt_backbone._embed_dim, llm_backbone.embed_dim)
         # Trackers
         self.vision_backbone_requires_grad = False
 
         # Set Module Keys =>> used in Checkpoint Saving / Model Loading
         self.all_module_keys = ["vision_backbone", "llm_backbone", "projector"]
+        if vggt_backbone is not None:
+            self.all_module_keys.extend(["vggt_backbone", "vggt_projector"])
         self.trainable_module_keys = []
+
+        # Add support for generation caching
+        self._supports_cache_class = True
 
         # === Generation Utilities ===
         #   => For computing likelihoods --> get tokens corresponding to "True", "False" and "Yes", "No"
@@ -255,6 +276,7 @@ class PrismaticVLM(VLM):
         input_ids: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         pixel_values: Optional[torch.FloatTensor] = None,
+        image_paths: Optional[Union[str, List[str]]] = None,
         labels: Optional[torch.LongTensor] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
         past_key_values: Optional[List[torch.FloatTensor]] = None,
@@ -283,7 +305,7 @@ class PrismaticVLM(VLM):
             )
             return output
 
-        elif input_ids.shape[1] == 1 or pixel_values is None:
+        elif input_ids.shape[1] == 1 or (pixel_values is None and image_paths is None):
             raise RuntimeError("Invalid `forward()` call!")
 
         # Handle Multimodal Indices is None --> pretend like the batch is fully multimodal (always image + text)!
@@ -314,6 +336,21 @@ class PrismaticVLM(VLM):
 
         # Projection Logic :: [bsz, num_patches, llm_embed_dim] =>> num_patches = (2 *) (256 + 1) for ViT-L + CLS
         projected_patch_embeddings = self.projector(patch_features)
+
+        # Always extract and project VGGT features
+        with torch.set_grad_enabled(self.vision_backbone_requires_grad):
+            # Handle image paths for multimodal indices
+            if isinstance(image_paths, list):
+                multimodal_image_paths = [image_paths[i] for i in multimodal_indices]
+            else:
+                multimodal_image_paths = image_paths
+            print("Calculating VGGT features...")
+            
+            vggt_features = self.vggt_backbone(multimodal_image_paths)
+            projected_vggt_embeddings = self.vggt_projector(vggt_features)
+            # Concatenate VGGT features with patch features
+            projected_patch_embeddings = torch.cat([projected_patch_embeddings, projected_vggt_embeddings], dim=1)
+
         projected_patch_attention_mask = None
         if attention_mask is not None:
             projected_patch_attention_mask = torch.full(
@@ -326,6 +363,13 @@ class PrismaticVLM(VLM):
         # Get Input Embeddings from LLM Backbone :: [bsz, input_seq_len, llm_embed_dim]
         input_embeddings = self.llm_backbone.embed_input_ids(input_ids)
 
+        print(f"Input embeddings shape: {input_embeddings.shape}")
+        print(f"Input embeddings before shape: {input_embeddings[multimodal_indices, :1, :].shape}")
+        print(f"Input embeddings after shape: {input_embeddings[multimodal_indices, 1:, :].shape}")
+        print(f"Projected patch embeddings shape: {projected_patch_embeddings.shape}")
+        # attention mask
+        print(f"Attention mask shape: {attention_mask.shape}")
+        print(f"Projected patch attention mask shape: {projected_patch_attention_mask.shape}")
         # Build Multimodal Embeddings (and build resulting attention mask)
         multimodal_embeddings = torch.cat(
             [
@@ -431,6 +475,7 @@ class PrismaticVLM(VLM):
         input_ids: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         pixel_values: Optional[torch.FloatTensor] = None,
+        image_paths: Optional[Union[str, List[str]]] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
         past_key_values: Optional[List[torch.FloatTensor]] = None,
         use_cache: Optional[bool] = None,
@@ -446,11 +491,12 @@ class PrismaticVLM(VLM):
         else:
             model_inputs = {"input_ids": input_ids}
 
-        # Make sure `pixel_values` are preserved in `model_inputs`
+        # Make sure `pixel_values` and `image_paths` are preserved in `model_inputs`
         model_inputs.update(
             {
                 "attention_mask": attention_mask,
                 "pixel_values": pixel_values,
+                "image_paths": image_paths,
                 "past_key_values": past_key_values,
                 "use_cache": use_cache,
             }
@@ -499,64 +545,53 @@ class PrismaticVLM(VLM):
                     full_out_ids = super().generate(input_ids=input_ids, pixel_values=pixel_values, **kwargs)
                     gen_ids = full_out_ids[0, input_ids.shape[1] :]
 
-                    # Decode `gen_ids` and strip any <EOS> tokens
-                    gen_texts.append(tokenizer.decode(gen_ids, skip_special_tokens=True).strip())
+                    # Decode `
 
-                else:
-                    full_out_dict = super().generate(
-                        input_ids=input_ids,
-                        pixel_values=pixel_values,
-                        output_scores=True,
-                        return_dict_in_generate=True,
-                        **kwargs,
-                    )
+    def generate(
+        self,
+        image: Union[Image.Image, torch.Tensor, Dict[str, torch.Tensor]],
+        prompt_text: str,
+        do_sample: bool = True,
+        temperature: float = 1.0,
+        max_new_tokens: int = 512,
+        min_length: int = 1,
+        image_paths: Optional[Union[str, List[str]]] = None,
+        **kwargs: str,
+    ) -> str:
+        """Generate text from the VLM given an image and prompt."""
+        # Get input IDs
+        input_ids = self.llm_backbone.tokenizer(prompt_text, truncation=True, return_tensors="pt").input_ids.to(self.device)
 
-                    # Generation pattern should usually be [TOKEN] <EOS> for True/False and Yes/No Generations
-                    gen_ids = full_out_dict.sequences[0, input_ids.shape[1] :]
-
-                    # [Debug] Verify that the first token generated is in `self.string2idx.values()`
-                    # assert gen_ids[0] in self.string2idx.values(), "Generated ID not in mapping!"
-
-                    # Decode `gen_ids` and strip any <EOS> tokens
-                    gen_texts.append(tokenizer.decode(gen_ids, skip_special_tokens=True).strip())
-
-                    # Get all token probabilities --> softmax over logits
-                    token_probs = torch.softmax(full_out_dict.scores[0][0], dim=0)
-
-                    # Get *normalized* probabilities for all values in `return_token_probabilities`
-                    slice_idxs = torch.tensor([self.string2idx[s] for s in return_string_probabilities])
-                    string_probs_unnormalized = token_probs[slice_idxs]
-                    string_probs = string_probs_unnormalized / string_probs_unnormalized.sum()
-                    gen_probabilities.append(string_probs.cpu().numpy().tolist())
-
-        return gen_texts if return_string_probabilities is None else gen_probabilities
-
-    @torch.inference_mode()
-    def generate(self, image: Image, prompt_text: str, **kwargs: str) -> str:
-        # For now, only support generation with a batch size of 1 for simplicity
-        image_transform, tokenizer = self.vision_backbone.image_transform, self.llm_backbone.tokenizer
-
-        # Prepare Inputs
-        input_ids = tokenizer(prompt_text, truncation=True, return_tensors="pt").input_ids.to(self.device)
-        pixel_values = image_transform(image)
-        if isinstance(pixel_values, torch.Tensor):
-            pixel_values = pixel_values[None, ...].to(self.device)
-        elif isinstance(pixel_values, dict):
-            pixel_values = {k: v[None, ...].to(self.device) for k, v in pixel_values.items()}
+        # Get pixel values from vision backbone
+        if isinstance(image, Image.Image):
+            pixel_values = self.vision_backbone.image_transform(image)
+            if isinstance(pixel_values, torch.Tensor):
+                pixel_values = pixel_values[None, ...].to(self.device)
+            elif isinstance(pixel_values, dict):
+                pixel_values = {k: v[None, ...].to(self.device) for k, v in pixel_values.items()}
         else:
-            raise ValueError(f"Unsupported `pixel_values` type = {type(pixel_values)}")
+            pixel_values = image
+        
+        pixel_values = pixel_values.to(self.device, dtype=torch.bfloat16)
 
-        # Invoke super().generate --> taps into `GenerationMixin` which (redirects) to `forward()`
-        autocast_dtype = self.llm_backbone.half_precision_dtype
-        with torch.autocast("cuda", dtype=autocast_dtype, enabled=self.enable_mixed_precision_training):
-            # fmt: off
-            generated_ids = super().generate(
-                input_ids=input_ids,            # Shape: [1, seq]
-                pixel_values=pixel_values,      # Shape: [1, 3, res, res] or Dict[str, Shape[1, 3, res, res]]
-                **kwargs
-            )
-            # fmt: on
+        # Generate!
+        generated_ids = super().generate(
+            input_ids=input_ids,
+            pixel_values=pixel_values,
+            image_paths=image_paths,
+            do_sample=do_sample,
+            temperature=temperature,
+            max_new_tokens=max_new_tokens,
+            min_length=min_length,
+            **kwargs,
+        )
 
-        generated_text = tokenizer.decode(generated_ids[0, input_ids.shape[1] :], skip_special_tokens=True).strip()
 
+        print(f"Generated IDs: {generated_ids}")
+        print(f"Input IDs shape: {input_ids.shape}")
+        print(f"Input IDs: {input_ids}")
+        # Decode generated text
+        generated_text = self.llm_backbone.tokenizer.decode(generated_ids[0, input_ids.shape[1]:], skip_special_tokens=True)
+        print(f"Generated text: {generated_text}")
+        print(self.llm_backbone.tokenizer.decode(generated_ids[0], skip_special_tokens=True))
         return generated_text

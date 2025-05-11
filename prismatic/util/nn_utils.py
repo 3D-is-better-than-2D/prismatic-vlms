@@ -51,3 +51,17 @@ class FusedMLPProjector(nn.Module):
 
     def forward(self, fused_img_patches: torch.Tensor) -> torch.Tensor:
         return self.projector(fused_img_patches)
+
+
+class VGGTProjector(nn.Module):
+    def __init__(self, vggt_dim: int, llm_dim: int) -> None:
+        super().__init__()
+        self.projector = nn.Sequential(
+            nn.Linear(vggt_dim, llm_dim, bias=True),
+            nn.LayerNorm(llm_dim),
+            nn.GELU(),
+            nn.Linear(llm_dim, llm_dim, bias=True)
+        )
+        
+    def forward(self, vggt_features: torch.Tensor) -> torch.Tensor:
+        return self.projector(vggt_features)

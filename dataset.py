@@ -1,4 +1,5 @@
 from datasets import load_dataset
+from PIL import Image
 
 # Login using e.g. `huggingface-cli login` to access this dataset
 ds = load_dataset("remyxai/OpenSpaces_MC")
@@ -13,3 +14,5 @@ print(ds['train']['messages'][0][2])
 print(ds['train'])
 # Print number of Q/A pairs for image 0
 print(len(ds['train']['messages'][0]))
+# Display first image
+Image.open(ds['train']['images'][0]).show()

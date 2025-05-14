@@ -14,6 +14,12 @@ module load Anaconda3/2023.07-2
 module load Python/3.11.3-GCCcore-12.3.0
 
 source venv2/bin/activate
+module load CUDA/12.4.0
 #python train_vggt.py
 #python scripts/preprocess.py --dataset_id "llava-v1.5-instruct" --root_dir data
-python finetune_vggt.py
+#pip install wheel
+#pip install packaging ninja
+#pip cache remove flash_attn
+#pip install flash-attn --no-build-isolation
+#python finetune_vggt.py
+torchrun --standalone --nnodes 1 --nproc-per-node 1 finetune_vggt.py

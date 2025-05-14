@@ -219,11 +219,12 @@ def pretrain(cfg: PretrainConfig) -> None:
     # Create Metrics =>> Handles on the fly tracking, logging to specified trackers (e.g., JSONL, Weights & Biases)
     overwatch.info(f"Creating Metrics with Active Trackers => `{cfg.trackers}`")
     metrics = Metrics(
-        cfg.trackers,
-        cfg.run_id,
-        run_dir,
-        draccus.encode(cfg),
-        cfg.stage,
+        active_trackers=cfg.trackers,
+        run_id=cfg.run_id,
+        run_dir=run_dir,
+        hparams={},
+        # draccus.encode(cfg),
+        stage=cfg.stage,
         wandb_project=cfg.wandb_project,
         wandb_entity=cfg.wandb_entity,
         grad_accumulation_steps=train_strategy.grad_accumulation_steps,

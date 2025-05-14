@@ -54,6 +54,9 @@ class FusedMLPProjector(nn.Module):
 
 
 class VGGTProjector(nn.Module):
+    """
+    NOT USED FOR NOW
+    """
     def __init__(self, vggt_dim: int, llm_dim: int) -> None:
         super().__init__()
         self.projector = nn.Sequential(

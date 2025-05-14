@@ -71,19 +71,11 @@ class PrismaticVLM(VLM):
         # Initialize VGGT backbone and projector if provided
         self.vggt_backbone = VGGTBackbone()
         self.vggt_backbone.to(self.device)
-        # if vggt_backbone is not None:
-        #     if arch_specifier == "linear":
-        #         self.vggt_projector = LinearProjector(vggt_backbone.embed_dim, llm_backbone.embed_dim)
-        #     elif arch_specifier.endswith("fused-gelu-mlp"):
-        #         self.vggt_projector = FusedMLPProjector(vggt_backbone.embed_dim, llm_backbone.embed_dim)
-        #     elif arch_specifier.endswith("gelu-mlp"):
-        #         self.vggt_projector = MLPProjector(vggt_backbone.embed_dim, llm_backbone.embed_dim)
-        #     else:
-        #         raise ValueError(f"VGGT projector with `{arch_specifier = }` is not supported!")
 
         self.vggt_projector = MLPProjector(self.vggt_backbone._embed_dim, llm_backbone.embed_dim)
         # Trackers
         self.vision_backbone_requires_grad = False
+        self.vggt_projector_requires_grad = True
 
         # Set Module Keys =>> used in Checkpoint Saving / Model Loading
         self.all_module_keys = ["vision_backbone", "llm_backbone", "projector"]
@@ -198,6 +190,24 @@ class PrismaticVLM(VLM):
             overwatch.info(f"[TRAINABLE] 🔥 =>> Vision Backbone `{self.vision_backbone.identifier}`", ctx_level=1)
             overwatch.info(f"[TRAINABLE] 🔥 =>> LLM Backbone `{self.llm_backbone.identifier}`", ctx_level=1)
             overwatch.info(f"[TRAINABLE] 🔥 =>> Projector `{self.arch_specifier}`", ctx_level=1)
+
+        elif stage == "vggt-projector":
+            self.vision_backbone.requires_grad_(False)
+            self.llm_backbone.requires_grad_(False)
+            self.projector.requires_grad_(False)
+            if hasattr(self, "vggt_backbone") and self.vggt_backbone is not None:
+                self.vggt_backbone.requires_grad_(False)
+            if hasattr(self, "vggt_projector") and self.vggt_projector is not None:
+                self.vggt_projector.requires_grad_(True)
+
+            self.trainable_module_keys = ["vggt_projector"]
+            self.vision_backbone_requires_grad = False
+
+            overwatch.info(f"[Frozen]    🥶 =>> Vision Backbone `{self.vision_backbone.identifier}`", ctx_level=1)
+            overwatch.info(f"[Frozen]    🥶 =>> LLM Backbone `{self.llm_backbone.identifier}`", ctx_level=1)
+            overwatch.info(f"[Frozen]    🥶 =>> Projector `{self.arch_specifier}`", ctx_level=1)
+            overwatch.info(f"[Frozen]    🥶 =>> VGGT Backbone", ctx_level=1)
+            overwatch.info(f"[TRAINABLE] 🔥 =>> VGGT Projector", ctx_level=1)
 
         else:
             raise ValueError(f"Stage `{stage}` is not supported for LLaVa! Try < align | finetune >")
@@ -338,19 +348,23 @@ class PrismaticVLM(VLM):
         projected_patch_embeddings = self.projector(patch_features)
 
         # Always extract and project VGGT features
-        with torch.set_grad_enabled(self.vision_backbone_requires_grad):
             # Handle image paths for multimodal indices
-            if isinstance(image_paths, list):
-                multimodal_image_paths = [image_paths[i] for i in multimodal_indices]
-            else:
-                multimodal_image_paths = image_paths
-            print("Calculating VGGT features...")
-            
-            vggt_features = self.vggt_backbone(multimodal_image_paths)
+        if isinstance(image_paths, list):
+            multimodal_image_paths = [image_paths[i] for i in multimodal_indices]
+        else:
+            multimodal_image_paths = image_paths
+        print("Calculating VGGT features...")
+        
+        self.vggt_backbone.requires_grad_(False)
+        self.vggt_projector.requires_grad_(True)
+        vggt_features = self.vggt_backbone(multimodal_image_paths)
+        
+        with torch.set_grad_enabled(self.vggt_projector_requires_grad):
             projected_vggt_embeddings = self.vggt_projector(vggt_features)
             # Concatenate VGGT features with patch features
+            print(f"Projected patch embeddings shape: {projected_patch_embeddings.shape}")
             projected_patch_embeddings = torch.cat([projected_patch_embeddings, projected_vggt_embeddings], dim=1)
-
+            print(f"Projected patch embeddings shape after concatenation: {projected_patch_embeddings.shape}")
         projected_patch_attention_mask = None
         if attention_mask is not None:
             projected_patch_attention_mask = torch.full(
@@ -359,6 +373,10 @@ class PrismaticVLM(VLM):
                 dtype=attention_mask.dtype,
                 device=attention_mask.device,
             )
+
+        for name, param in self.named_parameters():
+            if param.requires_grad:
+                print(f"Trainable: {name}")
 
         # Get Input Embeddings from LLM Backbone :: [bsz, input_seq_len, llm_embed_dim]
         input_embeddings = self.llm_backbone.embed_input_ids(input_ids)
@@ -401,7 +419,9 @@ class PrismaticVLM(VLM):
                 device=labels.device,
             )
             multimodal_labels = torch.cat(
-                [labels[multimodal_indices, :1], projected_patch_labels, labels[multimodal_indices, 1:]], dim=1
+                [labels[multimodal_indices, :1], 
+                 projected_patch_labels, 
+                 labels[multimodal_indices, 1:]], dim=1
             )
 
         # === Add Unimodal Handling ===

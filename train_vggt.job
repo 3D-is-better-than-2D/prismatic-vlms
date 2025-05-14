@@ -1,0 +1,19 @@
+#!/bin/bash
+
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
+#SBATCH --job-name=train_vggt
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=9
+#SBATCH --time=00:30:00
+#SBATCH --output=slurm_outputs/slurm_output_%A.out
+
+module purge
+module load 2023
+module load Anaconda3/2023.07-2
+module load Python/3.11.3-GCCcore-12.3.0
+
+source venv2/bin/activate
+#python train_vggt.py
+#python scripts/preprocess.py --dataset_id "llava-v1.5-instruct" --root_dir data
+python finetune_vggt.py

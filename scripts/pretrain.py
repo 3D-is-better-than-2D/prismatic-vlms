@@ -122,7 +122,8 @@ def pretrain(cfg: PretrainConfig) -> None:
     overwatch.info("Prismatic VLM Training :: Gathering Light")
 
     # Note => Under `torchrun` initializing `overwatch` will automatically set up `torch.distributed`
-    torch.cuda.set_device(device_id := (overwatch.local_rank()))
+    # torch.cuda.set_device(device_id := (overwatch.local_rank()))
+    torch.cuda.set_device(device_id := 0)
     torch.cuda.empty_cache()
 
     # Create Unique Run Name & Save Directory
@@ -134,16 +135,22 @@ def pretrain(cfg: PretrainConfig) -> None:
 
     # Start =>> Build Directories and Set Randomness
     overwatch.info('"Life is like a prism; what you see depends on how you turn the glass."', ctx_level=1)
-    hf_token = cfg.hf_token.read_text().strip() if isinstance(cfg.hf_token, Path) else os.environ[cfg.hf_token]
+    if isinstance(cfg.hf_token, str):
+        hf_token = cfg.hf_token
+    else:
+        hf_token = cfg.hf_token.read_text().strip() if isinstance(cfg.hf_token, Path) else os.environ[cfg.hf_token]
     worker_init_fn = set_global_seed(cfg.seed, get_worker_init_fn=True)
     os.makedirs(run_dir := (cfg.run_root_dir / cfg.run_id), exist_ok=True)
     os.makedirs(cfg.run_root_dir / cfg.run_id / "checkpoints", exist_ok=True)
-    if overwatch.is_rank_zero():
-        # Additionally save a JSON version of the config
-        draccus.dump(cfg, open(run_dir / "config.yaml", "w"))
-        with open(run_dir / "config.yaml", "r") as f_yaml, open(run_dir / "config.json", "w") as f_json:
-            yaml_cfg = yaml.safe_load(f_yaml)
-            json.dump(yaml_cfg, f_json, indent=2)
+
+    # TODO - ISSUE WITH SAVING CONFIG
+    # if overwatch.is_rank_zero():
+    #     # Additionally save a JSON version of the config
+    #     print(cfg)
+    #     draccus.dump(cfg, open(run_dir / "config.yaml", "w"))
+    #     with open(run_dir / "config.yaml", "r") as f_yaml, open(run_dir / "config.json", "w") as f_json:
+    #         yaml_cfg = yaml.safe_load(f_yaml)
+    #         json.dump(yaml_cfg, f_json, indent=2)
 
     # Load Vision Backbone --> on CPU, in Full Precision (initializing model, image_transform via TIMM)
     overwatch.info(f"Loading Vision Backbone [bold]{cfg.model.vision_backbone_id}[/] via TIMM ")

@@ -196,6 +196,7 @@ class PrismaticVLM(VLM):
             self.llm_backbone.requires_grad_(False)
             self.projector.requires_grad_(False)
             if hasattr(self, "vggt_backbone") and self.vggt_backbone is not None:
+                self.vggt_backbone = self.vggt_backbone.detach()
                 self.vggt_backbone.requires_grad_(False)
             if hasattr(self, "vggt_projector") and self.vggt_projector is not None:
                 self.vggt_projector.requires_grad_(True)
@@ -353,11 +354,12 @@ class PrismaticVLM(VLM):
             multimodal_image_paths = [image_paths[i] for i in multimodal_indices]
         else:
             multimodal_image_paths = image_paths
-        print("Calculating VGGT features...")
         
         # for param in self.vggt_backbone.parameters():
         #     param.requires_grad = False
+        self.vggt_backbone.requires_grad_(False)
         self.vggt_projector.requires_grad_(True)
+        print(f"Multimodal image paths: {multimodal_image_paths}")
         vggt_features = self.vggt_backbone(multimodal_image_paths)
         
         with torch.set_grad_enabled(self.vggt_projector_requires_grad):
@@ -374,10 +376,6 @@ class PrismaticVLM(VLM):
                 dtype=attention_mask.dtype,
                 device=attention_mask.device,
             )
-
-        for name, param in self.named_parameters():
-            if param.requires_grad:
-                print(f"Trainable: {name}")
 
         # Get Input Embeddings from LLM Backbone :: [bsz, input_seq_len, llm_embed_dim]
         input_embeddings = self.llm_backbone.embed_input_ids(input_ids)

@@ -28,7 +28,7 @@ class PaddedCollatorForLanguageModeling:
     def __call__(self, instances: Sequence[Dict[str, torch.Tensor]]) -> Dict[str, torch.Tensor]:
         input_ids, labels = tuple([instance[key] for instance in instances] for key in ("input_ids", "labels"))
         pixel_values = [instance["pixel_values"] for instance in instances]
-
+        image_paths = [instance["image_paths"] for instance in instances]
         # For now, we only support Tokenizers with `padding_side = "right"` during Training (but plan to extend!)
         #   => Handle padding via RNN Utils => `pad_sequence`
         input_ids = pad_sequence(input_ids, batch_first=True, padding_value=self.pad_token_id)
@@ -76,4 +76,5 @@ class PaddedCollatorForLanguageModeling:
             attention_mask=attention_mask,
             labels=labels,
             multimodal_indices=multimodal_indices,
+            image_paths=image_paths,
         )

@@ -355,7 +355,8 @@ class PrismaticVLM(VLM):
             multimodal_image_paths = image_paths
         print("Calculating VGGT features...")
         
-        self.vggt_backbone.requires_grad_(False)
+        # for param in self.vggt_backbone.parameters():
+        #     param.requires_grad = False
         self.vggt_projector.requires_grad_(True)
         vggt_features = self.vggt_backbone(multimodal_image_paths)
         

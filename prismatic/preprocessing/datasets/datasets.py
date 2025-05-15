@@ -133,6 +133,8 @@ class FinetuneDataset(Dataset[Dict[str, torch.Tensor]]):
 
         :return: Dictionary of {"pixel_values": torch.Tensor, "input_ids": torch.Tensor, "labels": torch.Tensor}
         """
+        # print(f"Example: {self.examples[idx]}")
+        image_paths = self.image_dir / Path(self.examples[idx]["image"])
         conversation = self.examples[idx]["conversations"]
 
         # Create Prompt Builder --> add each message sequentially
@@ -167,7 +169,6 @@ class FinetuneDataset(Dataset[Dict[str, torch.Tensor]]):
         # Tensorize =>> Set the <BOS> token's label to IGNORE_INDEX (since we're inserting the image patches after)
         #   - IMPORTANT => IF WE'RE USING HF LLM.forward(... labels=labels), SHIFTING HAPPENS _INSIDE_ MODEL!
         input_ids, labels = torch.tensor(input_ids), torch.tensor(labels)
-
         # Handle Truncation (if necessary)
         input_ids, labels = input_ids[: self.tokenizer.model_max_length], labels[: self.tokenizer.model_max_length]
 
@@ -181,11 +182,11 @@ class FinetuneDataset(Dataset[Dict[str, torch.Tensor]]):
             # Process Image --> get "pixel_values" (will either be a torch.Tensor OR a Dict[str,torch.Tensor])
             pixel_values = self.image_transform(Image.open(self.image_dir / image_path).convert("RGB"))
 
-            return dict(pixel_values=pixel_values, input_ids=input_ids, labels=labels)
+            return dict(pixel_values=pixel_values, input_ids=input_ids, labels=labels, image_paths=image_paths)
 
         else:
             # No image --> return `pixel_values` = None; Collator will do the smart batch handling for us!
-            return dict(pixel_values=None, input_ids=input_ids, labels=labels)
+            return dict(pixel_values=None, input_ids=input_ids, labels=labels, image_paths=image_paths)
 
     def get_modality_lengths(self) -> List[Tuple[bool, int]]:
         """Get a list of modalities (unimodal / text-only vs. multimodal) and length of conversations per example."""

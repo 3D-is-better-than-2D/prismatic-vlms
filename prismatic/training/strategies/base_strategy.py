@@ -173,6 +173,7 @@ class TrainingStrategy(ABC):
                 # Note that we'll unpack batch (and let AMP/FSDP do its thing) in the VLM.forward() call
                 #   => Basically, if we're using mixed precision (or not), autocast()/FSDP will move to device!
                 for train_idx, batch in enumerate(dataloader):
+                    print(f"Batch keys: {batch.keys()}")
                     # [Contract] self.vlm.forward() must automatically compute `loss` and return!
                     with torch.autocast(
                         "cuda",
@@ -183,6 +184,8 @@ class TrainingStrategy(ABC):
                             input_ids=batch["input_ids"],
                             attention_mask=batch["attention_mask"],
                             pixel_values=batch["pixel_values"],
+                            # TODO - this is the place to add the image paths
+                            image_paths=batch["image_paths"],
                             labels=batch["labels"],
                             multimodal_indices=batch["multimodal_indices"],
                         )

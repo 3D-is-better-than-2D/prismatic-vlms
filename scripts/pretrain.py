@@ -193,7 +193,9 @@ def pretrain(cfg: PretrainConfig) -> None:
         default_image_resolution=vision_backbone.default_image_resolution,
         padding_side=tokenizer.padding_side,
     )
-
+    print(f"Train dataset: {train_dataset}")
+    print(f"Global batch size: {cfg.global_batch_size}")
+    print(f"Per device batch size: {cfg.per_device_batch_size}")
     # Create Train Strategy
     overwatch.info(f"Initializing Train Strategy `{cfg.train_strategy}`")
     train_strategy = get_train_strategy(
@@ -202,8 +204,8 @@ def pretrain(cfg: PretrainConfig) -> None:
         device_id=device_id,
         epochs=cfg.epochs,
         max_steps=cfg.max_steps,
-        global_batch_size=cfg.global_batch_size,
-        per_device_batch_size=cfg.per_device_batch_size,
+        global_batch_size=4,#cfg.global_batch_size,
+        per_device_batch_size=4,#cfg.per_device_batch_size,
         learning_rate=cfg.learning_rate,
         weight_decay=cfg.weight_decay,
         max_grad_norm=cfg.max_grad_norm,

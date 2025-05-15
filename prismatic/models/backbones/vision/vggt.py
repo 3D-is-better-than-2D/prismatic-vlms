@@ -33,6 +33,7 @@ class VGGTBackbone(TimmViTBackbone):
         
         # Initialize VGGT model
         self.model = VGGT.from_pretrained("facebook/VGGT-1B").to("cuda")
+        self.model.requires_grad_(False)
         self.model.eval()
         
         # Set feature dimension (VGGT-1B output dimension)

@@ -196,7 +196,7 @@ class PrismaticVLM(VLM):
             self.llm_backbone.requires_grad_(False)
             self.projector.requires_grad_(False)
             if hasattr(self, "vggt_backbone") and self.vggt_backbone is not None:
-                self.vggt_backbone = self.vggt_backbone.detach()
+                # self.vggt_backbone = self.vggt_backbone.detach()
                 self.vggt_backbone.requires_grad_(False)
             if hasattr(self, "vggt_projector") and self.vggt_projector is not None:
                 self.vggt_projector.requires_grad_(True)
@@ -357,7 +357,7 @@ class PrismaticVLM(VLM):
         
         # for param in self.vggt_backbone.parameters():
         #     param.requires_grad = False
-        self.vggt_backbone.requires_grad_(False)
+        # self.vggt_backbone.requires_grad_(False)
         self.vggt_projector.requires_grad_(True)
         print(f"Multimodal image paths: {multimodal_image_paths}")
         vggt_features = self.vggt_backbone(multimodal_image_paths)

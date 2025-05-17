@@ -32,7 +32,8 @@ export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH
 cd "$TMPDIR/work/primsatic-vlms"
 
 uv python install 3.11
-uv sync -p 3.11 --no-build-isolation-package flash-attn
+uv sync -p 3.11 --no-install-package flash-attn
+uv sync
 
 source .venv/bin/activate
 

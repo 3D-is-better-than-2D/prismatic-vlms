@@ -28,6 +28,7 @@ export HF_DATASETS_CACHE="$TMPDIR/data_cache"
 export CUDA_HOME=$CUDA_PATH
 export PATH=$CUDA_HOME/bin:$PATH
 export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH
+export UV_LINK_MODE=copy
 
 cd "$TMPDIR/work/prismatic-vlms"
 

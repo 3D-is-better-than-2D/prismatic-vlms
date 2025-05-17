@@ -17,12 +17,12 @@ module load Python/3.11.3-GCCcore-12.3.0
 
 # install uv for dependency management
 curl -LsSf https://astral.sh/uv/install.sh | sh
-source $HOME/.cargo/env
+source $HOME/.local/bin/env
 
 mkdir -p "$TMPDIR/work"
 
 # copy project over
-rsync -r "$HOME/primsatic-vlms" "$TMPDIR/work" --exclude .venv --exclude .git --exclude .checkpoints --exclude wandb
+rsync -r "$HOME/prismatic-vlms" "$TMPDIR/work" --exclude .venv --exclude .git --exclude .checkpoints --exclude wandb
 
 export HF_DATASETS_CACHE="$TMPDIR/data_cache"
 export CUDA_HOME=$CUDA_PATH
@@ -32,7 +32,8 @@ export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH
 cd "$TMPDIR/work/primsatic-vlms"
 
 uv python install 3.11
-uv sync -p 3.11
+uv sync -p 3.11 --no-build-isolation-package flash-attn
+
 source .venv/bin/activate
 
 torchrun --standalone --nnodes 1 --nproc-per-node 1 finetune_vggt.py

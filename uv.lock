@@ -1253,14 +1253,6 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
-build = [
-    { name = "ninja" },
-    { name = "setuptools" },
-    { name = "wheel" },
-]
-compile = [
-    { name = "flash-attn" },
-]
 dev = [
     { name = "black" },
     { name = "gpustat" },
@@ -1277,19 +1269,16 @@ requires-dist = [
     { name = "draccus", git = "https://github.com/dlwh/draccus" },
     { name = "einops" },
     { name = "flash-attn", specifier = ">=2.7.4.post1" },
-    { name = "flash-attn", marker = "extra == 'compile'" },
     { name = "gpustat", marker = "extra == 'dev'" },
     { name = "huggingface-hub" },
     { name = "ipython", marker = "extra == 'dev'" },
     { name = "jsonlines" },
     { name = "ninja", specifier = ">=1.11.1.4" },
-    { name = "ninja", marker = "extra == 'build'" },
     { name = "pre-commit", marker = "extra == 'dev'" },
     { name = "rich" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.2.2" },
     { name = "sentencepiece" },
     { name = "setuptools", specifier = ">=80.7.1" },
-    { name = "setuptools", marker = "extra == 'build'" },
     { name = "timm", specifier = "==0.9.10" },
     { name = "torch", specifier = ">=2.6.0" },
     { name = "torchaudio", specifier = ">=2.6.0" },
@@ -1298,9 +1287,8 @@ requires-dist = [
     { name = "vggt", git = "https://github.com/facebookresearch/vggt.git" },
     { name = "wandb" },
     { name = "wheel", specifier = ">=0.45.1" },
-    { name = "wheel", marker = "extra == 'build'" },
 ]
-provides-extras = ["build", "compile", "dev"]
+provides-extras = ["dev"]
 
 [[package]]
 name = "prompt-toolkit"

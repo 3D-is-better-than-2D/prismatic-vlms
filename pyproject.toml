@@ -57,9 +57,13 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-build = ["setuptools", "wheel", "ninja"]
-compile = ["flash_attn"]
 dev = ["black>=24.2.0", "gpustat", "ipython", "pre-commit", "ruff>=0.2.2"]
+
+[tool.uv]
+no-build-isolation-package = ["flash_attn"]
+
+[tool.uv.sources]
+vggt = { git = "https://github.com/facebookresearch/vggt.git" }
 
 
 [project.urls]
@@ -89,6 +93,3 @@ ignore = ["F722"]
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["E402", "F401"]
-
-[tool.uv.sources]
-vggt = { git = "https://github.com/facebookresearch/vggt.git" }

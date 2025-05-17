@@ -27,6 +27,8 @@ from prismatic.models.backbones.vision.vggt import VGGTBackbone
 from prismatic.models.vlms.base_vlm import VLM
 from prismatic.overwatch import initialize_overwatch
 from prismatic.util.nn_utils import FusedMLPProjector, LinearProjector, MLPProjector
+from vggt.models.vggt import VGGT
+
 
 # Initialize Overwatch =>> Wraps `logging.Logger`
 overwatch = initialize_overwatch(__name__)
@@ -53,7 +55,7 @@ class PrismaticVLM(VLM):
             llm_backbone,
             enable_mixed_precision_training=enable_mixed_precision_training,
         )
-
+        # print(f"Enable mixed precision training: {enable_mixed_precision_training}")
         # Set Weight Initialization Seed for Projector Consistency
         torch.manual_seed(vision_backbone.embed_dim)
 
@@ -69,7 +71,8 @@ class PrismaticVLM(VLM):
             raise ValueError(f"PrismaticVLM with `{arch_specifier = }` is not supported!")
 
         # Initialize VGGT backbone and projector if provided
-        self.vggt_backbone = VGGTBackbone()
+        vggt_model = VGGT.from_pretrained("facebook/VGGT-1B").to(self.device)
+        self.vggt_backbone = VGGTBackbone(vggt_model)
         self.vggt_backbone.to(self.device)
 
         self.vggt_projector = MLPProjector(self.vggt_backbone._embed_dim, llm_backbone.embed_dim)
@@ -160,11 +163,13 @@ class PrismaticVLM(VLM):
 
         elif stage == "finetune":
             self.vision_backbone.requires_grad_(False)
-            self.llm_backbone.requires_grad_(True)
-            self.projector.requires_grad_(True)
+            # self.llm_backbone.requires_grad_(True)
+            # self.projector.requires_grad_(True)
+            self.llm_backbone.requires_grad_(False)
+            self.projector.requires_grad_(False)
 
             # Add to `self.trainable_module_keys`
-            self.trainable_module_keys = ["projector", "llm_backbone"]
+            self.trainable_module_keys = ["vggt_projector"]
 
             # Update Trackers
             self.vision_backbone_requires_grad = False
@@ -339,14 +344,15 @@ class PrismaticVLM(VLM):
             )
 
         # Run Visual Feature Extraction
-        with torch.set_grad_enabled(self.vision_backbone_requires_grad):
+        # with torch.set_grad_enabled(self.vision_backbone_requires_grad):
+        with torch.no_grad():
             if isinstance(pixel_values, dict):
                 patch_features = self.vision_backbone({k: pixel_values[k][multimodal_indices] for k in pixel_values})
             else:
                 patch_features = self.vision_backbone(pixel_values[multimodal_indices])
 
-        # Projection Logic :: [bsz, num_patches, llm_embed_dim] =>> num_patches = (2 *) (256 + 1) for ViT-L + CLS
-        projected_patch_embeddings = self.projector(patch_features)
+            # Projection Logic :: [bsz, num_patches, llm_embed_dim] =>> num_patches = (2 *) (256 + 1) for ViT-L + CLS
+            projected_patch_embeddings = self.projector(patch_features)
 
         # Always extract and project VGGT features
             # Handle image paths for multimodal indices
@@ -359,8 +365,9 @@ class PrismaticVLM(VLM):
         #     param.requires_grad = False
         # self.vggt_backbone.requires_grad_(False)
         self.vggt_projector.requires_grad_(True)
-        print(f"Multimodal image paths: {multimodal_image_paths}")
-        vggt_features = self.vggt_backbone(multimodal_image_paths)
+        # print(f"Multimodal image paths: {multimodal_image_paths}")
+        with torch.no_grad():
+            vggt_features = self.vggt_backbone(multimodal_image_paths)
         
         with torch.set_grad_enabled(self.vggt_projector_requires_grad):
             projected_vggt_embeddings = self.vggt_projector(vggt_features)
@@ -369,6 +376,11 @@ class PrismaticVLM(VLM):
             projected_patch_embeddings = torch.cat([projected_patch_embeddings, projected_vggt_embeddings], dim=1)
             print(f"Projected patch embeddings shape after concatenation: {projected_patch_embeddings.shape}")
         projected_patch_attention_mask = None
+
+        torch.cuda.empty_cache()
+        del vggt_features
+        del projected_vggt_embeddings
+
         if attention_mask is not None:
             projected_patch_attention_mask = torch.full(
                 (projected_patch_embeddings.shape[0], projected_patch_embeddings.shape[1]),
@@ -380,13 +392,13 @@ class PrismaticVLM(VLM):
         # Get Input Embeddings from LLM Backbone :: [bsz, input_seq_len, llm_embed_dim]
         input_embeddings = self.llm_backbone.embed_input_ids(input_ids)
 
-        print(f"Input embeddings shape: {input_embeddings.shape}")
-        print(f"Input embeddings before shape: {input_embeddings[multimodal_indices, :1, :].shape}")
-        print(f"Input embeddings after shape: {input_embeddings[multimodal_indices, 1:, :].shape}")
-        print(f"Projected patch embeddings shape: {projected_patch_embeddings.shape}")
-        # attention mask
-        print(f"Attention mask shape: {attention_mask.shape}")
-        print(f"Projected patch attention mask shape: {projected_patch_attention_mask.shape}")
+        # print(f"Input embeddings shape: {input_embeddings.shape}")
+        # print(f"Input embeddings before shape: {input_embeddings[multimodal_indices, :1, :].shape}")
+        # print(f"Input embeddings after shape: {input_embeddings[multimodal_indices, 1:, :].shape}")
+        # print(f"Projected patch embeddings shape: {projected_patch_embeddings.shape}")
+        # # attention mask
+        # print(f"Attention mask shape: {attention_mask.shape}")
+        # print(f"Projected patch attention mask shape: {projected_patch_attention_mask.shape}")
         # Build Multimodal Embeddings (and build resulting attention mask)
         multimodal_embeddings = torch.cat(
             [
@@ -606,11 +618,11 @@ class PrismaticVLM(VLM):
         )
 
 
-        print(f"Generated IDs: {generated_ids}")
-        print(f"Input IDs shape: {input_ids.shape}")
-        print(f"Input IDs: {input_ids}")
+        # print(f"Generated IDs: {generated_ids}")
+        # print(f"Input IDs shape: {input_ids.shape}")
+        # print(f"Input IDs: {input_ids}")
         # Decode generated text
         generated_text = self.llm_backbone.tokenizer.decode(generated_ids[0, input_ids.shape[1]:], skip_special_tokens=True)
-        print(f"Generated text: {generated_text}")
+        # print(f"Generated text: {generated_text}")
         print(self.llm_backbone.tokenizer.decode(generated_ids[0], skip_special_tokens=True))
         return generated_text

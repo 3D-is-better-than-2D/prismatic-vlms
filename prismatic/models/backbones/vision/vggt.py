@@ -22,7 +22,8 @@ class VGGTBackbone(TimmViTBackbone):
     VGGT backbone for extracting VGGT features from images.
     """
     def __init__(
-        self
+        self, 
+        vggt_model,
     ) -> None:
         super().__init__(
             "vggt",
@@ -32,7 +33,7 @@ class VGGTBackbone(TimmViTBackbone):
         )
         
         # Initialize VGGT model
-        self.model = VGGT.from_pretrained("facebook/VGGT-1B").to("cuda")
+        self.model = vggt_model
         self.model.requires_grad_(False)
         self.model.eval()
         
@@ -53,7 +54,7 @@ class VGGTBackbone(TimmViTBackbone):
         if isinstance(image_paths, str):
             image_paths = [image_paths]
             
-        print(image_paths)
+        # print(image_paths)
         # Load and preprocess images using VGGT's utility
         images = load_and_preprocess_images(image_paths).to("cuda")
         if images.ndim == 4:
@@ -61,12 +62,14 @@ class VGGTBackbone(TimmViTBackbone):
         # Get aggregated tokens from VGGT
         # change dtype of images
         images = images.to(torch.bfloat16)
-        aggregated_tokens, _ = self.model.aggregator(images)
+
+        with torch.no_grad():
+            vggt_features, _ = self.model.aggregator(images)
         
         # Get the final layer features
-        vggt_features = aggregated_tokens[-1]
+        vggt_features = vggt_features[-1]
         
-        print(f"VGGT features shape: {vggt_features.shape}")
+        # print(f"VGGT features shape: {vggt_features.shape}")
         # Reshape to match expected format [batch_size, num_features, feature_dim]
         # VGGT features are already in the right shape, but we ensure it
         features = vggt_features.view(vggt_features.size(0), -1, self.embed_dim)

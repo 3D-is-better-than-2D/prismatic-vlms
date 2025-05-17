@@ -6,6 +6,7 @@ from PIL import Image
 from pathlib import Path
 from prismatic import load
 from prismatic.models.backbones.vision.vggt import VGGTBackbone
+from vggt.models.vggt import VGGT
 
 # For gated LMs like Llama-2, make sure to request official access, and generate an access token
 hf_token = ""
@@ -16,7 +17,8 @@ model_id = "dinov2-224px+7b"
 vlm = load(model_id, hf_token=hf_token)
 
 # Add VGGT backbone directly
-vggt_backbone = VGGTBackbone()
+vggt_model = VGGT.from_pretrained("facebook/VGGT-1B").to(device)
+vggt_backbone = VGGTBackbone(vggt_model)
 vlm.vggt_backbone = vggt_backbone
 vlm.vggt_backbone.to(device)
 

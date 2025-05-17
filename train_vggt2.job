@@ -1,0 +1,31 @@
+#!/bin/bash
+
+#SBATCH --partition=gpu_h100
+#SBATCH --gpus=1
+#SBATCH --job-name=train_vggt
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=9
+#SBATCH --time=00:30:00
+#SBATCH --output=slurm_outputs/slurm_output_%A.out
+
+module purge
+module load 2023
+module load Anaconda3/2023.07-2
+module load Python/3.11.3-GCCcore-12.3.0
+module load CUDA/12.4.0
+
+source venv3/bin/activate
+
+export CUDA_HOME=$CUDA_PATH
+export PATH=$CUDA_HOME/bin:$PATH
+export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH
+
+#python train_vggt.py
+#python scripts/preprocess.py --dataset_id "llava-v1.5-instruct" --root_dir data
+#pip install wheel
+#pip install packaging ninja
+#pip cache remove flash_attn
+#pip install flash-attn --no-build-isolation
+
+torchrun --standalone --nnodes 1 --nproc-per-node 1 finetune_vggt.py
+#python filter.py

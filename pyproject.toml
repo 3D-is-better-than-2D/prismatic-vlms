@@ -5,16 +5,20 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "prismatic"
 authors = [
-    {name = "Siddharth Karamcheti", email="skaramcheti@cs.stanford.edu"},
-    {name = "Suraj Nair", email="suraj.nair@tri.global"},
-    {name = "Ashwin Balakrishna", email="ashwin.balakrishna@tri.global"},
+    { name = "Siddharth Karamcheti", email = "skaramcheti@cs.stanford.edu" },
+    { name = "Suraj Nair", email = "suraj.nair@tri.global" },
+    { name = "Ashwin Balakrishna", email = "ashwin.balakrishna@tri.global" },
 ]
 description = "Prismatic VLMs: Investigating the Design Space of Visually-Conditioned Language Models"
 version = "0.0.2"
 readme = "README.md"
-requires-python = ">=3.8"
-keywords = ["vision-language models", "multimodal pretraining", "machine learning"]
-license = {file = "LICENSE"}
+requires-python = ">=3.11"
+keywords = [
+    "vision-language models",
+    "multimodal pretraining",
+    "machine learning",
+]
+license = { file = "LICENSE" }
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -43,17 +47,11 @@ dependencies = [
     "torchvision>=0.16.0",
     "torchaudio",
     "transformers>=4.38.1",
-    "wandb"
+    "wandb",
 ]
 
 [project.optional-dependencies]
-dev = [
-    "black>=24.2.0",
-    "gpustat",
-    "ipython",
-    "pre-commit",
-    "ruff>=0.2.2",
-]
+dev = ["black>=24.2.0", "gpustat", "ipython", "pre-commit", "ruff>=0.2.2"]
 
 [project.urls]
 homepage = "https://github.com/TRI-ML/prismatic-vlms"

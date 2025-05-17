@@ -31,7 +31,8 @@ export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH
 
 cd "$TMPDIR/work/primsatic-vlms"
 
-uv sync
+uv python install 3.11
+uv sync -p 3.11
 source .venv/bin/activate
 
 torchrun --standalone --nnodes 1 --nproc-per-node 1 finetune_vggt.py
